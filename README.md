@@ -1,0 +1,1 @@
+Distributed log system, mostly based on the project in [Distributed Services with Go](https://pragprog.com/titles/tjgo/distributed-services-with-go/) with some code quality improvements.
