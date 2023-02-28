@@ -1,0 +1,74 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "delog.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels: {{ include "delog.labels" . | nindent 4 }}
+spec:
+  selector:
+    matchLabels: {{ include "delog.selectorLabels" . | nindent 6 }}
+  serviceName: {{ include "delog.fullname" . }}
+  replicas: {{ .Values.replicas }}
+  template:
+    metadata:
+      name: {{ include "delog.fullname" . }}
+      labels: {{ include "delog.labels" . | nindent 8 }}
+    spec:
+      # initContainers...
+      initContainers:
+      - name: {{ include "delog.fullname" . }}-config-init
+        image: busybox
+        imagePullPolicy: IfNotPresent
+        command:          
+          - /bin/sh
+          - -c
+          - |-
+            ID=$(echo $HOSTNAME | rev | cut -d- -f1 | rev)
+            cat > /var/run/delog/config.yaml <<EOD
+            data-dir: /var/run/delog/data
+            rpc-port: {{.Values.rpcPort}}
+            # Make sure the following three key-values are on one line each in
+            # your code. I split them across multiple lines to fit them in
+            # for the book.
+            bind-addr: \
+              "$HOSTNAME.delog.{{.Release.Namespace}}.\svc.cluster.local:\
+                {{.Values.serfPort}}"
+            bootstrap: $([ $ID = 0 ] && echo true || echo false)
+            $([ $ID != 0 ] && echo 'start-join-addrs: \
+              "delog-0.delog.{{.Release.Namespace}}.svc.cluster.local:\
+                {{.Values.serfPort}}"')
+            EOD   
+        volumeMounts:
+        - name: datadir
+          mountPath: /var/run/delog
+      # containers...
+      containers:
+      - name: {{ include "delog.fullname" . }}
+        image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+        ports:
+        - containerPort: {{ .Values.rpcPort }}
+          name: rpc
+        - containerPort: {{ .Values.serfPort }}
+          name: serf
+        args:
+          - --config-file=/var/run/delog/config.yaml
+        # probes...
+        readinessProbe:
+          exec:
+            command: ["/bin/grpc_health_probe", "-addr=:{{ .Values.rpcPort }}"]
+          initialDelaySeconds: 10
+        livenessProbe:
+          exec:
+            command: ["/bin/grpc_health_probe", "-addr=:{{ .Values.rpcPort }}"]
+          initialDelaySeconds: 10
+        volumeMounts:
+        - name: datadir
+          mountPath: /var/run/delog
+  volumeClaimTemplates:
+  - metadata:
+      name: datadir
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      resources:
+        requests:
+          storage: {{ .Values.storage }}
