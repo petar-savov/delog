@@ -1,4 +1,4 @@
-FROM golang:1.14-alpine AS build
+FROM golang:1.19-alpine AS build
 WORKDIR /go/src/delog
 COPY . .
 RUN CGO_ENABLED=0 go build -o /go/bin/delog ./cmd/delog
